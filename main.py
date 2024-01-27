@@ -6,3 +6,6 @@ def uat_func2():
     
 def uat_func():
     print("func")
+
+def uat_john_func():
+    print("this is a new uat func")
