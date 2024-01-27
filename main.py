@@ -27,8 +27,4 @@ print(word2)
 
 arr = [1,2,3,4]
 print(arr[::-1])
-print(arr[0::-1])
-print("to")
-print("to")
-print("to")
-print("to")
+#print(arr[0::-1])
