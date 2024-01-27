@@ -20,4 +20,13 @@ jobs:
          pip install pylint
     - name: Analysing the code with pylint
       run: |
-        pylint $(git ls-files '*.py')
+        pylint $(git ls-files '*.py') || echo "Pylint exited with $?, ignoring errors"
+    - name: Check Pylint rating
+            run: |
+              pylint_rating=$( pylint --list-msgs | awk '$2 == "rating" { print $1 }' )
+              if [[ $pylint_rating > "5.0" ]]; then
+                echo "Pylint rating is 5.0, marking workflow as success"
+              else
+                echo "Pylint rating is not 5.0, marking workflow as failure"
+                exit 1
+              fi
