@@ -23,7 +23,6 @@ word = "howareyou"
 
 word2 = word[::-1]
 
-print(word2)
 
 arr = [1,2,3,4]
 print(arr[::-1])
