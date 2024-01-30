@@ -4,11 +4,12 @@ import json
 from utils.typing import *
 
 
-columns_selection = ['Name','Survived','Sex','Cabin']
 filtering_rules = [('Survived',1)]
+columns_selection = ['Name','Survived','Sex','Cabin']
+data_enrichment_json_string = '[{"PassengerId":1,"favorite_color":"red"}]'
+
 recipients = ['x']
 recipients_matrix = '[{"email":"roman.medioni","filtering_rules":[["Survived", 1],["Sex","male"],["Cabin","A6"]]}]'
-data_enrichment_json_string = '[{"PassengerId":1,"favorite_color":"red"}]'
 
 def generate_statistics(df: pd.DataFrame):
     """
@@ -87,11 +88,14 @@ def send_email(recipient:str, df:pd.DataFrame):
     print(f'sending email to {recipient}')
     print(df)
 
-
 def main():
     data = pd.read_csv("./utils/fake_data.csv")
+
+    #apply pre-filter on rows (optional)
     data_filtered = apply_row_filtering(data,filtering_rules)
+    #apply selection on columns (optional)
     data_filtered = apply_column_selection(data_filtered, columns_selection)
+    #apply enrichment (optional)
     data_filtered = apply_enrichment(data_filtered,data_enrichment_json_string)
     #print(data_filtered)
     generate_emails(recipients,recipients_matrix,data_filtered)
