@@ -1,16 +1,57 @@
 import pandas as pd
 import numpy as np
+import os
 import json
 from utils.typing import *
+from utils.api_connectivity import *
 
+#api parameters (optional)
+client_id = 'your_client_id'
+client_secret = 'your_client_secret'
+token_url = 'https://example.com/token'  
+api_url = 'https://example.com/token'  
 
-filtering_rules = [('Survived',1)]
+#data manipulation parameters (optional)
+filtering_rules = []
 columns_selection = ['Name','Survived','Sex','Cabin']
 data_enrichment_json_string = '[{"PassengerId":1,"favorite_color":"red"}]'
 
+#emmail parameters
 recipients = ['x']
 recipients_matrix = '[{"email":"roman.medioni","filtering_rules":[["Survived", 1],["Sex","male"],["Cabin","A6"]]}]'
 
+def get_data(file_path: str, file_type: str):
+    """
+    Get data from different file formats (csv, text, excel).
+
+    Parameters:
+    - file_path (str): The path to the file.
+    - file_type (str): The type of the file (csv, text, excel).
+
+    Returns:
+    - pd.DataFrame: The DataFrame containing the data.
+    """
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"File not found: {file_path}")
+
+    if file_type == 'api':
+        #api connectivity
+        access_token = get_access_token(client_id, client_secret, token_url)
+        if access_token:
+            # call api
+            make_authorized_request(api_url, access_token)
+            print("")
+        return ""
+    if file_type == 'csv':
+        return pd.read_csv(file_path)
+    elif file_type == 'text':
+        # Assuming tab-separated values (you can adjust the delimiter)
+        return pd.read_csv(file_path, delimiter='\t')
+    elif file_type == 'excel':
+        return pd.read_excel(file_path)
+    else:
+        raise ValueError(f"Unsupported file type: {file_type}")
+    
 def generate_statistics(df: pd.DataFrame):
     """
     describe function from pandas
@@ -89,7 +130,7 @@ def send_email(recipient:str, df:pd.DataFrame):
     print(df)
 
 def main():
-    data = pd.read_csv("./utils/fake_data.csv")
+    data = get_data('./utils/fake_data.csv','csv') 
     
     #apply pre-filter on rows (optional)
     data_filtered = apply_row_filtering(data,filtering_rules)
@@ -99,12 +140,9 @@ def main():
     data_filtered = apply_enrichment(data_filtered,data_enrichment_json_string)
     #print(data_filtered)
     generate_emails(recipients,recipients_matrix,data_filtered)
-  
-    stats = generate_statistics(data)
-    #print(stats)
 
     stats2 = generate_statistics(data_filtered)
-    #print(stats2)
+    print(stats2)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,5 @@
 from functools import wraps
 
-
 def type_check_decorator(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
@@ -21,7 +20,5 @@ def type_check_decorator(func):
         return func(*args, **kwargs)
 
     return wrapper
-
-
-# Specify functions to be exported when using `from decorators import *`
+    
 __all__ = ['type_check_decorator']
