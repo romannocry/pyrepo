@@ -4,6 +4,7 @@ import os
 import json
 from utils.typing import *
 from utils.api_connectivity import *
+from jinja2 import Template
 
 #api parameters (optional)
 client_id = 'your_client_id'
@@ -12,13 +13,15 @@ token_url = 'https://example.com/token'
 api_url = 'https://example.com/token'  
 
 #data manipulation parameters (optional)
-filtering_rules = []
+filtering_rules = [('Cabin','A6')]
 columns_selection = ['Name','Survived','Sex','Cabin']
 data_enrichment_json_string = '[{"PassengerId":1,"favorite_color":"red"}]'
 
 #emmail parameters
 recipients = ['x']
 recipients_matrix = '[{"email":"roman.medioni","filtering_rules":[["Survived", 1],["Sex","male"],["Cabin","A6"]]}]'
+from_addr = ""
+email_title = ""
 
 def get_data(file_path: str, file_type: str):
     """
@@ -107,6 +110,53 @@ def apply_enrichment(df:pd.DataFrame, data_enrichment_json_string:str):
         print(f"Error during merge: {e}")
     return df
 
+def generate_template(df: pd.DataFrame):
+    # Jinja2 template
+    template_str = """
+    <html>
+    <head>
+        <title>{{ title }}</title>
+    </head>
+    <body>
+        <h1>Hello, {{ name }}!</h1>
+        <p>{{ message }}</p>
+
+        <table border="1">
+            <thead>
+                <tr>
+                    {% for column in columns %}
+                        <th>{{ column }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in table_data %}
+                    <tr>
+                        {% for column in columns %}
+                            <td>{{ row[column] }}</td>
+                        {% endfor %}
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </body>
+    </html>
+    """
+
+    template = Template(template_str)
+    
+    # Example data
+    data = {
+        'title': 'My Email',
+        'name': 'John',
+        'message': 'Welcome to the community!',
+        'columns': df.columns.tolist(),
+        'table_data': df.to_dict(orient='records'),
+    }
+
+    rendered_html = template.render(**data)
+    return rendered_html
+
 def generate_emails(recipients: list, recipients_matrix: list, df:pd.DataFrame):
     """
     generate email notifications:
@@ -143,6 +193,9 @@ def main():
 
     stats2 = generate_statistics(data_filtered)
     print(stats2)
+
+    test_html = generate_template(data_filtered)
+    print(test_html)
 
 
 if __name__ == "__main__":
