@@ -90,7 +90,6 @@ def send_email(recipient:str, df:pd.DataFrame):
 
 def main():
     data = pd.read_csv("./utils/fake_data.csv")
-
     #apply pre-filter on rows (optional)
     data_filtered = apply_row_filtering(data,filtering_rules)
     #apply selection on columns (optional)
