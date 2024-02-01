@@ -15,8 +15,9 @@ token_url = 'https://example.com/token'
 api_url = 'https://example.com/token'  
 
 #data manipulation parameters (optional)
-filtering_rules = [('Cabin','A6')]
-columns_selection = ['Name','Survived','Sex','Cabin']
+filtering_rules = [('Age',22)]
+filtering_rules2 = [('Age',22),('Sex','female')]
+columns_selection = ['Name','Survived','Sex','Cabin','Age']
 data_enrichment_json_string = '[{"PassengerId":1,"favorite_color":"red"}]'
 
 #emmail parameters
@@ -112,7 +113,7 @@ def apply_enrichment(df:pd.DataFrame, data_enrichment_json_string:str):
         print(f"Error during merge: {e}")
     return df
 
-def generate_template(df: pd.DataFrame):
+def generate_template(dfs: [pd.DataFrame]):
     # Jinja2 template
     template_str = """
     <html>
@@ -122,38 +123,50 @@ def generate_template(df: pd.DataFrame):
     <body>
         <h1>Hello, {{ name }}!</h1>
         <p>{{ message }}</p>
-
+        {% for table in table_data %}
         <table border="1">
-            <thead>
-                <tr>
-                    {% for column in columns %}
-                        <th>{{ column }}</th>
-                    {% endfor %}
-                </tr>
-            </thead>
-            <tbody>
-                {% for row in table_data %}
+            {% for item in table %}
+                {% if loop.first %}
+                <thead>
                     <tr>
-                        {% for column in columns %}
-                            <td>{{ row[column] }}</td>
+                        {% for column in item %}
+                            <th>{{ column }}</th>
                         {% endfor %}
                     </tr>
-                {% endfor %}
-            </tbody>
+                </thead>
+                {% else %}
+                    <tbody>
+                        {% for rows in item %}
+                        <tr>
+                            {% for key, value in rows.items() %}
+                                <td> {{ value }} </td>
+                            {% endfor %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                {% endif %}
+            {% endfor %}     
         </table>
+        </br></br>
+        {% endfor %}
     </body>
     </html>
     """
+    table_data = []
+    for df in dfs:
+        table_data.append((df.columns.tolist(),df.to_dict(orient='records')))
 
     template = Template(template_str)
-    
+    testlist = [1,2]
     # Example data
     data = {
         'title': 'My Email',
         'name': 'John',
         'message': 'Welcome to the community!',
-        'columns': df.columns.tolist(),
-        'table_data': df.to_dict(orient='records'),
+        #'columns': df.columns.tolist(),
+        #'columns': [df.columns.tolist(),df.columns.tolist()],
+        #'table_data': [df.to_dict(orient='records'),df.to_dict(orient='records')],
+        'table_data': table_data,
     }
 
     rendered_html = template.render(**data)
@@ -193,10 +206,13 @@ def main():
     #print(data_filtered)
     generate_emails(recipients,recipients_matrix,data_filtered)
 
+    data_filtered2 = apply_row_filtering(data,filtering_rules2)
+    #apply selection on columns (optional)
+
     stats2 = generate_statistics(data_filtered)
     print(stats2)
 
-    test_html = generate_template(data_filtered)
+    test_html = generate_template([data_filtered,data_filtered2])
     print(test_html)
 
 
