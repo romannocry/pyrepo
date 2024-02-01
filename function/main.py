@@ -2,9 +2,11 @@ import pandas as pd
 import numpy as np
 import os
 import json
-from utils.typing import *
-from utils.api_connectivity import *
+from ..utils.typing import *
+from ..utils.api_connectivity import *
 from jinja2 import Template
+# Inside main_script.py
+import sys
 
 #api parameters (optional)
 client_id = 'your_client_id'
@@ -180,7 +182,7 @@ def send_email(recipient:str, df:pd.DataFrame):
     print(df)
 
 def main():
-    data = get_data('./utils/fake_data.csv','csv') 
+    data = get_data(sys.path[0]+'/AI/utils/fake_data.csv','csv') 
     
     #apply pre-filter on rows (optional)
     data_filtered = apply_row_filtering(data,filtering_rules)
