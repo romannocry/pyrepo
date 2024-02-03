@@ -12,13 +12,12 @@ import sys
 client_id = 'your_client_id'
 client_secret = 'your_client_secret'
 token_url = 'https://example.com/token'  
-api_url = 'https://example.com/token'  
+api_url = 'https://example.com/api/v1'  
 
 #data manipulation parameters (optional)
-filtering_rules = [('Age',22)]
-filtering_rules2 = [('Age',22),('Sex','female')]
+filtering_rules = [('Age',22),('Sex','female')]
 columns_selection = ['Name','Survived','Sex','Cabin','Age']
-data_enrichment_json_string = '[{"PassengerId":1,"favorite_color":"red"}]'
+data_enrichment_json_string = '[[{"Survived":0,"favorite_color":"red"},{"Survived":1,"favorite_color":"blue"}],[{"Sex":"male","Sex_":"boy"}],[{"Survived":1,"favorite_color":"blue"}]]'
 
 #emmail parameters
 recipients = ['x']
@@ -101,14 +100,14 @@ def apply_enrichment(df:pd.DataFrame, data_enrichment_json_string:str):
     Enrich with additionnal dataset
     """
     # Convert JSON string to a Python dictionary
-    data_enrichment_dict = json.loads(data_enrichment_json_string)
-    # Create a DataFrame from the dictionary
-    df_enrichment = pd.DataFrame(data_enrichment_dict, index=[0])
+    data_enrichment_dict_list = json.loads(data_enrichment_json_string)
     
     try:
-        if ('PassengerId' in df.columns) and ('PassengerId' in df_enrichment.columns):
-            df = df.merge(df_enrichment, on='PassengerId', how='outer')
-        else: print("not in columns")
+        for enrichment_item in data_enrichment_dict_list:
+            # Create a DataFrame from the dictionary
+            df_enrichment = pd.DataFrame(enrichment_item)
+            #enrich
+            df = pd.merge(df, df_enrichment, how='outer')
     except pd.errors.MergeError as e:
         print(f"Error during merge: {e}")
     return df
@@ -206,13 +205,10 @@ def main():
     #print(data_filtered)
     generate_emails(recipients,recipients_matrix,data_filtered)
 
-    data_filtered2 = apply_row_filtering(data,filtering_rules2)
-    #apply selection on columns (optional)
-
     stats2 = generate_statistics(data_filtered)
-    print(stats2)
+    #print(stats2)
 
-    test_html = generate_template([data_filtered,data_filtered2])
+    test_html = generate_template([data_filtered])
     print(test_html)
 
 
