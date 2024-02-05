@@ -8,22 +8,13 @@ from jinja2 import Template
 # Inside main_script.py
 import sys
 
+
 #api parameters (optional)
 client_id = 'your_client_id'
 client_secret = 'your_client_secret'
 token_url = 'https://example.com/token'  
 api_url = 'https://example.com/api/v1'  
 
-#data manipulation parameters (optional)
-filtering_rules = [('Age',22),('Sex','female')]
-columns_selection = ['Name','Survived','Sex','Cabin','Age']
-data_enrichment_json_string = '[[{"Survived":0,"favorite_color":"red"},{"Survived":1,"favorite_color":"blue"}],[{"Sex":"male","Sex_":"boy"}],[{"Survived":1,"favorite_color":"blue"}]]'
-
-#emmail parameters
-recipients = ['x']
-recipients_matrix = '[{"email":"roman.medioni","filtering_rules":[["Survived", 1],["Sex","male"],["Cabin","A6"]]}]'
-from_addr = ""
-email_title = ""
 
 def get_data(file_path: str, file_type: str):
     """
@@ -57,11 +48,33 @@ def get_data(file_path: str, file_type: str):
     else:
         raise ValueError(f"Unsupported file type: {file_type}")
     
-def generate_statistics(df: pd.DataFrame):
+def generate_dataset_description(df: pd.DataFrame):
     """
     describe function from pandas
     """
     return df.describe()
+
+def generate_dataset_count_stats(df: pd.DataFrame, remove_columns_with_unique_values: bool):
+    """
+    describe function from pandas
+    """
+    # Generate a DataFrame with value counts for each column
+    value_counts_df = pd.DataFrame()
+
+    for column in df.columns:
+        if remove_columns_with_unique_values == True:
+            if df[column].nunique() != df[column].count():
+                counts = df[column].value_counts(dropna=False)
+                value_counts_df = pd.concat([value_counts_df, counts.rename(f'{column}_count')], axis=1)
+        else:
+            counts = df[column].value_counts(dropna=False)
+            value_counts_df = pd.concat([value_counts_df, counts.rename(f'{column}_count')], axis=1)
+
+    # Display the resulting DataFrame
+    print(value_counts_df)
+
+    return value_counts_df
+
 
 def apply_row_filtering(df:pd.DataFrame, filtering_rules: list):
     """
@@ -191,9 +204,25 @@ def generate_emails(recipients: list, recipients_matrix: list, df:pd.DataFrame):
 
 def send_email(recipient:str, df:pd.DataFrame):
     print(f'sending email to {recipient}')
-    print(df)
+    #print(df)
 
 def main():
+
+
+  
+    #data manipulation parameters (optional)
+    filtering_rules = [('Age',22),('Sex','female')]
+    columns_selection = ['Name','Survived','Sex','Cabin','Age']
+    
+    data_enrichment_json_string = '[[{"Survived":0,"favorite_color":"red"},{"Survived":1,"favorite_color":"blue"}],[{"Sex":"male","Sex_":"boy"}]]'
+
+    #emmail parameters
+    recipients = ['x']
+    recipients_matrix = '[{"email":"roman.medioni","filtering_rules":[["Survived", 1],["Sex","male"],["Cabin","A6"]]}]'
+    from_addr = ""
+    email_title = ""
+
+    #get data 
     data = get_data(sys.path[0]+'/AI/utils/fake_data.csv','csv') 
     
     #apply pre-filter on rows (optional)
@@ -202,14 +231,16 @@ def main():
     data_filtered = apply_column_selection(data_filtered, columns_selection)
     #apply enrichment (optional)
     data_filtered = apply_enrichment(data_filtered,data_enrichment_json_string)
-    #print(data_filtered)
+    
+    print(data_filtered)
     generate_emails(recipients,recipients_matrix,data_filtered)
 
-    stats2 = generate_statistics(data_filtered)
-    #print(stats2)
+    generate_dataset_count_stats(data_filtered, True)
+    stats2 = generate_dataset_description(data_filtered)
+    print(stats2)
 
     test_html = generate_template([data_filtered])
-    print(test_html)
+    #print(test_html)
 
 
 if __name__ == "__main__":
