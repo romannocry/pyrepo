@@ -184,7 +184,11 @@ def apply_default_rebate(rebate, client, df):
 
 # Function to calculate rebate
 def calculate_rebate(row, rebate, fullRebate):
-    #when is volume eligible <> volume rebated ??
+    """
+    row: reference the row of the df
+    rebate: rebate parameters
+    fullRebate: if True, will apply the rebate to the full transactions as soon as threshold is breached, else only the subset of transactions that breached the threshold
+    """
 
     if row['eligibility']:
         # if rebate impacts the full volume as soon as we hit the threshold
