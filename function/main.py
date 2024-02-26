@@ -71,7 +71,7 @@ def generate_dataset_count_stats(df: pd.DataFrame, remove_columns_with_unique_va
             value_counts_df = pd.concat([value_counts_df, counts.rename(f'{column}_count')], axis=1)
 
     # Display the resulting DataFrame
-    print(value_counts_df)
+    #print(value_counts_df)
 
     return value_counts_df
 
@@ -102,9 +102,9 @@ def apply_column_selection(df:pd.DataFrame,columns: list):
     #columns are empty - do not filter
     if columns:
         columns_found = [column for column in columns if column in df.columns]
-        print(f"filtering on : Columns {columns_found} do not exist in the DataFrame")
+        print(f"filtering on : Columns {columns_found}")
         columns_missing = [column for column in columns if column not in df.columns]
-        print(f"Error: Columns {columns_missing} do not exist in the DataFrame so we removed those from your input")
+        print(f"Columns {columns_missing} do not exist in the DataFrame so we removed those from your input")
         df = df[columns_found]
     return df
 
@@ -280,7 +280,7 @@ def pre_process_dataframe(data: pd.DataFrame, filtering_rules: list, columns_sel
     data_filtered = apply_column_selection(data_filtered, columns_selection)
     #apply enrichment (optional)
     data_filtered = apply_enrichment(data_filtered,data_enrichment_json_string)
-
+    #print(data_filtered)
     return data_filtered
 
 def main():
@@ -290,22 +290,24 @@ def main():
     data = get_data(file,'csv') 
 
     #data pre-processing parameters (optional)
-    filtering_rules = [('Sex','female')]
+    filtering_rules = [('Sex','f`   =r\
+                        emale'),('age',22)]
     columns_selection = ['Name','Survived','Sex','Cabin','Age']
     data_enrichment_json_string = '[[{"Survived":0,"favorite_color":"red"},{"Survived":1,"favorite_color":"blue"}],[{"Sex":"male","Sex_":"boy"}]]'
 
     #email parameters
     recipients = ['x']
     recipients_matrix = '[]'
-    #recipients_matrix = '[{"email":"roman.medioni","filtering_rules":[["Survived", 1],["Sex","male"],["Cabin","A6"]]}]'
+    recipients_matrix = '[{"email":"roman.medioni","filtering_rules":[["Survived", 1]]}]'
     from_addr = ""
     email_title = ""
 
     #processed data output
     processed_data = pre_process_dataframe(data, filtering_rules, columns_selection, data_enrichment_json_string)
+    print(processed_data)
     ##Actions
     #email generation step
-    generate_emails(recipients, recipients_matrix, processed_data, True, True)
+    generate_emails(recipients, recipients_matrix, processed_data, False, False)
 
 
 
