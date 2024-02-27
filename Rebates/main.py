@@ -9,11 +9,12 @@ month = 2
 
 
 #applies a 0.1 rebate for all the transactions > 500,000 
-yearly_rebate_example = {
+rebate_example = {
   "clientId": "C1",
   "rebates": [
     {
       "type": "yearly",
+      "fullRebate":False,
       "threshold": 600000,
       "rebate_amount_per_contract": 0.1,
       "exchanges": ["E1", "E2","E3","E4"],
@@ -23,6 +24,7 @@ yearly_rebate_example = {
     },
     {
       "type": "monthly",
+      "fullRebate":True,
       "threshold": 300000,
       "rebate_amount_per_contract": 0.01,
       "exchanges": ["E1", "E2","E3","E4"],
@@ -32,6 +34,7 @@ yearly_rebate_example = {
     },
     {
       "type": "default",
+      "fullRebate":True,
       "threshold": 10000,
       "rebate_amount_per_contract": 0.001,
       "exchanges": ["E1", "E2","E3","E4"],
@@ -39,6 +42,28 @@ yearly_rebate_example = {
       "accounts": ["A1", "A2", "A3"],
       "product_name":["P1"]
     },   
+  ]
+}
+
+#applies a 0.1 rebate for all the transactions > 500,000 
+rebate_example2 = {
+  "clientId": "CONTE",
+  "rebates": [
+    {
+      "type": "monthly",
+      "fullRebate":True,
+      "rebate_rules": [
+          {"threshold": 700000, "rebate_amount": 2},
+          {"threshold": 1050000, "rebate_amount": 3},
+          {"threshold": 1050000, "rebate_amount": 3}
+      ],
+      "threshold": [700000],
+      "rebate_amount_per_contract": [2],
+      "exchanges": [],
+      "salesman_code": [],
+      "accounts": [],
+      "product_name":["OSEMINI"]
+    }
   ]
 }
 
@@ -69,7 +94,7 @@ yearly_rebate_example_2 = {
 }
 
 
-examples = [yearly_rebate_example]
+examples = [rebate_example2]
 
 # Columns to exclude from the group by operation
 #exclude_columns = ['B']
@@ -91,10 +116,10 @@ def apply_yearly_rebate(rebate, client, df):
 
     # Constructing the filter conditions
     # ==> are those filters mutually independant or not?? to be checked
-    exchange_condition = df['exchange'].isin(rebate['exchanges'])
-    salesman_condition = df['salesman_code'].isin(rebate['salesman_code'])
-    account_condition = df['account'].isin(rebate['accounts'])
-    
+    exchange_condition = True if not rebate['exchanges'] else df['exchange'].isin(rebate['exchanges'])
+    salesman_condition = True if not rebate['salesman_code'] else  df['salesman_code'].isin(rebate['salesman_code'])
+    account_condition = True if not rebate['accounts'] else  df['account'].isin(rebate['accounts'])
+
     # Calculate the YTD volume for each combination of clientId, exchange, salesman_code, and account
     df['ytd_volume'] = df.groupby(['clientId','exchange','account','salesman_code','product_name','year'])['volume'].transform('sum')
     
@@ -112,7 +137,7 @@ def apply_yearly_rebate(rebate, client, df):
 
 
     # Conditionally calculate the volume eligible, rebated and the actual amount
-    df[['volume_eligible','volume_rebated', 'volume_rebated_amount']] = df.apply(lambda row: calculate_rebate(row, rebate, True), axis=1)
+    df[['volume_eligible','volume_rebated', 'volume_rebated_amount']] = df.apply(lambda row: calculate_rebate(row, rebate, rebate.get('fullRebate')), axis=1)
 
     return df
 
@@ -134,9 +159,9 @@ def apply_monthly_rebate(rebate, client, df):
 
     # Constructing the filter conditions
     # ==> are those filters mutually independant or not?? to be checked
-    exchange_condition = df['exchange'].isin(rebate['exchanges'])
-    salesman_condition = df['salesman_code'].isin(rebate['salesman_code'])
-    account_condition = df['account'].isin(rebate['accounts'])
+    exchange_condition = True if not rebate['exchanges'] else df['exchange'].isin(rebate['exchanges'])
+    salesman_condition = True if not rebate['salesman_code'] else  df['salesman_code'].isin(rebate['salesman_code'])
+    account_condition = True if not rebate['accounts'] else  df['account'].isin(rebate['accounts'])
     volume_condition = df['volume'] > rebate['threshold']
 
     # Create a new column "eligibility" and set it to True for eligible rows
@@ -146,7 +171,7 @@ def apply_monthly_rebate(rebate, client, df):
     #df['volume_eligible'] = df.apply(lambda row: row['volume'] - rebate['threshold'] if row['eligibility'] else None, axis=1)
 
    # Conditionally calculate the volume eligible, rebated and the actual amount
-    df[['volume_eligible','volume_rebated', 'volume_rebated_amount']] = df.apply(lambda row: calculate_rebate(row, rebate, True), axis=1)
+    df[['volume_eligible','volume_rebated', 'volume_rebated_amount']] = df.apply(lambda row: calculate_rebate(row, rebate, rebate.get('fullRebate')), axis=1)
 
     return df
 
