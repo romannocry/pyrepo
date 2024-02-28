@@ -45,24 +45,50 @@ rebate_example = {
   ]
 }
 
-#applies a 0.1 rebate for all the transactions > 500,000 
-rebate_example2 = {
+rebate_example_monthly_threshold = {
   "clientId": "CONTE",
   "rebates": [
     {
       "type": "monthly",
       "fullRebate":True,
       "rebate_rules": [
-          {"threshold": 700000, "rebate_amount": 2},
-          {"threshold": 1050000, "rebate_amount": 3},
-          {"threshold": 1050000, "rebate_amount": 3}
+          {"threshold": 700000, "rebate_amount": .2},
+          {"threshold": 1050000, "rebate_amount": .3},
+          {"threshold": 1250000, "rebate_amount": .5},
+          {"threshold": 1200000, "rebate_amount": .4}
       ],
-      "threshold": [700000],
-      "rebate_amount_per_contract": [2],
       "exchanges": [],
       "salesman_code": [],
       "accounts": [],
       "product_name":["OSEMINI"]
+    }
+  ]
+}
+
+rebate_fixed = {
+  "clientId": "CONTE",
+  "rebates": [
+    {
+      "type": "yearly",
+      "fullRebate":True,
+      "rebate_rules": [
+          {"threshold": 700000, "rebate_amount": .2},
+      ],
+      "exchanges": [],
+      "salesman_code": [],
+      "accounts": [],
+      "product_name":["OSEMINI"]
+    },
+    {
+      "type": "yearly",
+      "fullRebate":False,
+      "rebate_rules": [
+          {"threshold": 2000000, "rebate_amount": .2},
+      ],
+      "exchanges": [],
+      "salesman_code": [],
+      "accounts": [],
+      "product_name":["OSEBIG"]
     }
   ]
 }
@@ -94,7 +120,7 @@ yearly_rebate_example_2 = {
 }
 
 
-examples = [rebate_example2]
+examples = [rebate_example_monthly_threshold]#, rebate_fixed]
 
 # Columns to exclude from the group by operation
 #exclude_columns = ['B']
@@ -104,74 +130,88 @@ examples = [rebate_example2]
 
 def apply_yearly_rebate(rebate, client, df):
     # Calculate and apply yearly rebate logic here
-    print(f'==># Calculate and apply yearly rebate logic here {rebate}')
+    #print(f'==># Calculate and apply yearly rebate logic here {rebate}')
 
     #filter on client
     df = df[(df['clientId'] == client)]
     
-    #add info on function parameters:
-    df['rebate_type'] = f'Type: {rebate.get("type")}'
-    df['rebate_threshold'] = f'Threshold: {rebate.get("threshold")}'
-    df['rebate_amount_per_contract'] = f'Rebate per contract: {rebate.get("rebate_amount_per_contract")}'
+    if not df.empty:
+        #add info on function parameters:
+        df['rebate_type'] = f'Type: {rebate.get("type")}'
 
-    # Constructing the filter conditions
-    # ==> are those filters mutually independant or not?? to be checked
-    exchange_condition = True if not rebate['exchanges'] else df['exchange'].isin(rebate['exchanges'])
-    salesman_condition = True if not rebate['salesman_code'] else  df['salesman_code'].isin(rebate['salesman_code'])
-    account_condition = True if not rebate['accounts'] else  df['account'].isin(rebate['accounts'])
+        # Fill all empty values with 'N/A'
+        df = df.fillna('N/A')
 
-    # Calculate the YTD volume for each combination of clientId, exchange, salesman_code, and account
-    df['ytd_volume'] = df.groupby(['clientId','exchange','account','salesman_code','product_name','year'])['volume'].transform('sum')
-    
-    # Filter on active month global variable - we now have all the data that we need
-    df = df[(df['month'] == month)]
-    
-    #new filter condition on ytd volume
-    volume_condition = df['ytd_volume'] > rebate['threshold']
-    
-    # Create a new column "eligibility" and set it to True for eligible rows
-    df['eligibility'] = exchange_condition & salesman_condition & account_condition & volume_condition
+        #exclusion param
+        exclusion_param = ''
+        # Constructing the filter conditions
+        exchange_condition = True if not rebate['exchanges'] else df['exchange'].isin(rebate['exchanges'])
+        salesman_condition = True if not rebate['salesman_code'] else  df['salesman_code'].isin(rebate['salesman_code'])
+        account_condition = True if not rebate['accounts'] else  df['account'].isin(rebate['accounts'])
+        product_condition = True if not rebate['product_name'] else  df['product_name'].isin(rebate['product_name'])
 
-    # Conditionally calculate 'volume_eligible'
-    #df['volume_eligible'] = df.apply(lambda row: row['ytd_volume'] - rebate['threshold'] if row['eligibility'] else None, axis=1)
+        #
+        #df['exchange_condition'] = exchange_condition 
+        df[['exchange_condition', 'salesman_condition', 'account_condition','product_condition']] = exchange_condition & salesman_condition & account_condition & product_condition
 
+        #create columms to help troubleshoot reason of exclusion
+        df['exchange_condition'] = exchange_condition 
+        df['salesman_condition'] = salesman_condition 
+        df['account_condition'] = account_condition 
+        df['product_condition'] = product_condition 
 
-    # Conditionally calculate the volume eligible, rebated and the actual amount
-    df[['volume_eligible','volume_rebated', 'volume_rebated_amount']] = df.apply(lambda row: calculate_rebate(row, rebate, rebate.get('fullRebate')), axis=1)
+        # Calculate the YTD volume for each combination of clientId, exchange, salesman_code, and account
+        df['ytd_volume'] = df.groupby(['clientId','exchange','account','salesman_code','product_name','year'])['volume'].transform('sum')
+
+        # Filter on active month global variable - we now have all the data that we need
+        df = df[(df['month'] == month)]
+        
+        # Create a new column "eligibility" and set it to True for eligible rows
+        df['eligibility'] = exchange_condition & salesman_condition & account_condition & product_condition
+
+        # Create a new column "eligibility" and set it to True for eligible rows
+        df['exclusion_comment'] = exclusion_param
+
+        # Conditionally calculate the volume eligible, rebated and the actual amount
+        df[['threshold_eligibility', 'threshold_rebate', 'volume_eligible','volume_rebated', 'volume_rebated_amount']] = df.apply(lambda row: calculate_rebate(row, rebate, rebate.get('fullRebate')), axis=1)
 
     return df
 
 #Question - when it is monthly, is it applying on the fully volume when the threshold is met or on transactions above the threshold???
 def apply_monthly_rebate(rebate, client, df):
     # Calculate and apply monthly rebate logic here
-    print(f'==># Calculate and apply monthly rebate logic here: {rebate}')
+    #print(f'==># Calculate and apply monthly rebate logic here: {rebate}')
 
     #filter on client
     df = df[(df['clientId'] == client)]
 
-    # Filter on active month global variable as we do not need previous months data for monthly rebates calculation
-    df = df[(df['month'] == month)]
+    if not df.empty:
+        # Filter on active month global variable as we do not need previous months data for monthly rebates calculation
+        df = df[(df['month'] == month)]
 
-    #add info on function parameters:
-    df['rebate_type'] = f'Type: {rebate.get("type")}'
-    df['rebate_threshold'] = f'Threshold: {rebate.get("threshold")}'
-    df['rebate_amount_per_contract'] = f'Rebate per contract: {rebate.get("rebate_amount_per_contract")}'
+        #add info on function parameters:
+        df['rebate_type'] = f'Type: {rebate.get("type")}'
 
-    # Constructing the filter conditions
-    # ==> are those filters mutually independant or not?? to be checked
-    exchange_condition = True if not rebate['exchanges'] else df['exchange'].isin(rebate['exchanges'])
-    salesman_condition = True if not rebate['salesman_code'] else  df['salesman_code'].isin(rebate['salesman_code'])
-    account_condition = True if not rebate['accounts'] else  df['account'].isin(rebate['accounts'])
-    volume_condition = df['volume'] > rebate['threshold']
+        # Fill all empty values with 'N/A'
+        df = df.fillna('N/A')
 
-    # Create a new column "eligibility" and set it to True for eligible rows
-    df['eligibility'] = exchange_condition & salesman_condition & account_condition & volume_condition
-    
-    # Conditionally calculate 'volume_eligible'
-    #df['volume_eligible'] = df.apply(lambda row: row['volume'] - rebate['threshold'] if row['eligibility'] else None, axis=1)
+        # Constructing the filter conditions
+        exchange_condition = True if not rebate['exchanges'] else df['exchange'].isin(rebate['exchanges'])
+        salesman_condition = True if not rebate['salesman_code'] else  df['salesman_code'].isin(rebate['salesman_code'])
+        account_condition = True if not rebate['accounts'] else  df['account'].isin(rebate['accounts'])
+        product_condition = True if not rebate['product_name'] else  df['product_name'].isin(rebate['product_name'])
 
-   # Conditionally calculate the volume eligible, rebated and the actual amount
-    df[['volume_eligible','volume_rebated', 'volume_rebated_amount']] = df.apply(lambda row: calculate_rebate(row, rebate, rebate.get('fullRebate')), axis=1)
+        #create columms to help troubleshoot reason of exclusion
+        df['exchange_condition'] = exchange_condition 
+        df['salesman_condition'] = salesman_condition 
+        df['account_condition'] = account_condition 
+        df['product_condition'] = product_condition 
+
+        # Create a new column "eligibility" and set it to True for eligible rows (aside threshold)
+        df['eligibility'] = exchange_condition & salesman_condition & account_condition & product_condition
+
+        # Conditionally calculate the volume eligible, rebated and the actual amount
+        df[['threshold_eligibility', 'threshold_rebate', 'volume_eligible','volume_rebated', 'volume_rebated_amount']] = df.apply(lambda row: calculate_rebate(row, rebate, rebate.get('fullRebate')), axis=1)
 
     return df
 
@@ -207,6 +247,7 @@ def apply_default_rebate(rebate, client, df):
 
     return df
 
+
 # Function to calculate rebate
 def calculate_rebate(row, rebate, fullRebate):
     """
@@ -214,22 +255,27 @@ def calculate_rebate(row, rebate, fullRebate):
     rebate: rebate parameters
     fullRebate: if True, will apply the rebate to the full transactions as soon as threshold is breached, else only the subset of transactions that breached the threshold
     """
-
+    threshold_eligibility = 0
+    threshold_rebate = 0
     if row['eligibility']:
+        for rule in rebate.get('rebate_rules'):
+            if (row['volume']> rule.get('threshold')) and (threshold_eligibility < rule.get('threshold')):
+                threshold_eligibility = rule.get('threshold')
+                threshold_rebate = rule.get('rebate_amount')
         # if rebate impacts the full volume as soon as we hit the threshold
         if fullRebate:
             volume_eligible = row['volume']
             volume_rebated = row['volume']
         else:
             # if rebate starts after the threshold is breached
-            volume_eligible = row['ytd_volume'] - rebate.get("threshold") if rebate.get("type") == "yearly" else row['volume'] - rebate.get("threshold")
+            volume_eligible = row['ytd_volume'] - threshold_eligibility if rebate.get("type") == "yearly" else row['volume'] - threshold_eligibility
             volume_rebated = min(volume_eligible, row['volume'])
         
         # amount calculation
-        volume_rebated_amount = volume_rebated * rebate.get("rebate_amount_per_contract")
-        return pd.Series([volume_eligible, volume_rebated, volume_rebated_amount])
+        volume_rebated_amount = volume_rebated * threshold_rebate
+        return pd.Series([threshold_eligibility, threshold_rebate, volume_eligible, volume_rebated, volume_rebated_amount])
     else:
-        return pd.Series([None, None, None])
+        return pd.Series([None, None, None, None, None])
 
 # Dictionary mapping rebate types to their corresponding functions
 rebate_functions = {
@@ -247,20 +293,20 @@ def trigger_rebate_process(rebateEntry):
     df = get_volumes(year, month)
 
     # Create an empty DataFrame that will serve as our output
-    df_output = pd.DataFrame()
-
+    dfs = []
     for rebate in rebates:
         # Apply rebate based on client's rebate type
         rebate_type = rebate.get('type')
         if rebate_type in rebate_functions:
             rebate_function = rebate_functions[rebate_type]
-            df_rebate = rebate_function(rebate, rebateEntry.get("clientId"), df)
-            df_output = pd.concat([df_output, df_rebate], ignore_index=True)
+            df_output = rebate_function(rebate, rebateEntry.get("clientId"), df)
+            dfs.append(df_output)
         else:
             print("Invalid rebate type")
-    
-    print(df_output)
 
+
+    client_consolidated_df = pd.concat(dfs, ignore_index=True)
+    return client_consolidated_df
 
 
 
@@ -275,8 +321,12 @@ def get_volumes(year: int, end_month_ref:int):
 
 
 def main():
+    dfs = []
     for rebateEntry in examples:
-        trigger_rebate_process(rebateEntry)
+        dfs.append(trigger_rebate_process(rebateEntry))
+
+    all_dfs = pd.concat(dfs, ignore_index=True)
+    print(all_dfs)
 
 
 if __name__ == "__main__":
