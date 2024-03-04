@@ -220,6 +220,9 @@ def get_rebate_summary_by_period(df: pd.DataFrame, groupby:list, sumby: str):
     df = df.groupby(groupby)[sumby].sum().unstack('period')
     df.columns = pd.to_datetime(df.columns)
     df = df.sort_index(axis=1,ascending=False)
+        # Add a total row
+    total_row = df.sum(axis=0)  # Sum along the rows (vertically)
+    #df = pd.concat([df, total_row.to_frame().T], ignore_index=True)
 
     # Calculate the percentage change between consecutive periods
     df['evolution%_last2periods'] = ((df[df.columns[0]] - df[df.columns[1]]) / df[df.columns[1]]) * 100
@@ -286,7 +289,11 @@ def main():
     print(discarded_filters)
     print("*****Given month*****")
     print(get_rebate_summary_for_given_month(all_rebates, month))
-    print("*****summary*****")
+    print("*****summary custom*****")
     print(get_rebate_summary_by_period(all_rebates,['clientId','period'],'volume_rebated_amount'))
+    print("*****summary custom*****")
+    print(get_rebate_summary_by_period(all_rebates,['clientId','period','product_name'],'volume_rebated_amount'))
+
+
 if __name__ == "__main__":
     main()
