@@ -104,11 +104,6 @@ rebate_C1 =  {
 
 clientRebatesList = [rebate_CONTE, rebate_C1]#, rebate_fixed]
 
-# Columns to exclude from the group by operation
-#exclude_columns = ['B']
-# Selecting columns to include
-#included_columns = [col for col in df.columns if col not in exclude_columns]
-
 
 def apply_yearly_rebate(rebate, client, df):
     # Calculate and apply yearly rebate logic here
@@ -126,9 +121,6 @@ def apply_yearly_rebate(rebate, client, df):
     # Group by clientId and calculate YTD
     df['ytd_volume'] = df.groupby(['clientId','exchange','account','salesman_code','product_name','year'])['volume'].cumsum()
 
-    # Filter on active month global variable - we now have all the data that we need
-    #df = df[(df['month'] == month)]
-
     # Conditionally calculate the volume eligible, rebated and the actual amount
     df[['threshold_eligibility', 'threshold_rebate', 'volume_eligible','volume_rebated', 'volume_rebated_amount']] = df.apply(lambda row: calculate_rebate(row, rebate), axis=1)
     #print(df)
@@ -144,6 +136,12 @@ def apply_monthly_rebate(rebate, client, df):
     # Conditionally calculate the volume eligible, rebated and the actual amount
     df[['threshold_eligibility', 'threshold_rebate', 'volume_eligible','volume_rebated', 'volume_rebated_amount']] = df.apply(lambda row: calculate_rebate(row, rebate), axis=1)
     return df
+
+# Dictionary mapping rebate types to their corresponding functions - no default/fixed one as it is basically a monthly/yearly with 0 threshold
+rebate_functions = {
+    "monthly": apply_monthly_rebate,
+    "yearly": apply_yearly_rebate,
+}
 
 # Function to calculate rebate
 def calculate_rebate(row, rebate):
@@ -177,11 +175,7 @@ def calculate_rebate(row, rebate):
 
     return pd.Series([threshold_eligibility, threshold_rebate, volume_eligible, volume_rebated, volume_rebated_amount])
 
-# Dictionary mapping rebate types to their corresponding functions - no default/fixed one as it is basically a monthly/yearly with 0 threshold
-rebate_functions = {
-    "monthly": apply_monthly_rebate,
-    "yearly": apply_yearly_rebate,
-}
+
 
 
 def trigger_rebate_process(filtered_volumes: pd.DataFrame, clientId, rebate):
@@ -229,70 +223,86 @@ def get_rebate_summary_by_period(df: pd.DataFrame, groupby:list, sumby: str):
 
     return df
 
+# Dictionary mapping of reporting functions - not used
+reporting_functions = {
+    "volumes_unmatched": get_volumes_not_matched_to_a_rebate,
+    "rebate_month": get_rebate_summary_for_given_month,
+    "rebate_summary": get_rebate_summary_by_period,
+}
 
 def main():
     #get volume data
     df = get_volumes(year, month)
-    # rebates output
-    rebates = []
-    discarded_filters = []
-    # trigger rebate process for each client
-    for client in clientRebatesList:
-        client_filtered_df = df[(df['clientId'] == client.get('clientId'))]
-        for rebate in client.get('rebates'):
-            type = rebate.get('type')
-            full_rebate = rebate.get('fullRebate')
-            rebate_rules = rebate.get('rebate_rules')
-            filters = rebate.get('filters')
-            
-            rebate_filtered_df = client_filtered_df
-            rebate_filtered_df['type'] = type
-            #print(f'{type} - {full_rebate} - {rebate_rules} - {filters}')
 
-            for filter in filters:
-                for key, value in filter.items():
+    # check if volumes retrieved
+    if not df.empty:
+        # rebates output
+        rebates = []
+        discarded_filters = []
+        # trigger rebate process for each client
+        for client in clientRebatesList:
+            client_filtered_df = df[(df['clientId'] == client.get('clientId'))]
+            for rebate in client.get('rebates'):
+                type = rebate.get('type')
+                full_rebate = rebate.get('fullRebate')
+                rebate_rules = rebate.get('rebate_rules')
+                filters = rebate.get('filters')
+                
+                rebate_filtered_df = client_filtered_df
+                rebate_filtered_df['type'] = type
+                #print(f'{type} - {full_rebate} - {rebate_rules} - {filters}')
 
-                    #checking that the filter is not empty = []
-                    if value:
-                        # Check if the key exists in the DataFrame's columns
-                        print(value)
-                        if key in rebate_filtered_df.columns:
-                            rebate_filtered_df = rebate_filtered_df[rebate_filtered_df[key].isin(value)]
-                            # Getting the values that were not found
-                            not_found_values = [{key,value} for value in value if value not in rebate_filtered_df[key].tolist()]
-                            #not_found_pairs = [(key, value) for key, value in filter.items() if key not in rebate_filtered_df[key].tolist()]
+                for filter in filters:
+                    for key, value in filter.items():
 
-                            if not_found_values: discarded_filters.append(not_found_values)
+                        #checking that the filter is not empty = []
+                        if value:
+                            # Check if the key exists in the DataFrame's columns
+                            print(value)
+                            if key in rebate_filtered_df.columns:
+                                rebate_filtered_df = rebate_filtered_df[rebate_filtered_df[key].isin(value)]
+                                # Getting the values that were not found
+                                not_found_values = [{key,value} for value in value if value not in rebate_filtered_df[key].tolist()]
+                                #not_found_pairs = [(key, value) for key, value in filter.items() if key not in rebate_filtered_df[key].tolist()]
+
+                                if not_found_values: discarded_filters.append(not_found_values)
+                            else:
+                                # Handle the case when the key doesn't exist
+                                print(f"The key '{key}' does not exist in the DataFrame.")
                         else:
-                            # Handle the case when the key doesn't exist
-                            print(f"The key '{key}' does not exist in the DataFrame.")
-                    else:
-                        pass
-            
-            if not rebate_filtered_df.empty:
-                #print('Data was found')
-                rebate_filtered_df['eligible'] = True
+                            pass
+                
+                if not rebate_filtered_df.empty:
+                    #print('Data was found')
+                    rebate_filtered_df['eligible'] = True
+                    #print(filtered_df)
+                    rebates.append(trigger_rebate_process(rebate_filtered_df,client.get('clientId'),rebate))
+                else:
+                    print('No data following the application of the filters')
+                    discarded_filters.append(filters)
                 #print(filtered_df)
-                rebates.append(trigger_rebate_process(rebate_filtered_df,client.get('clientId'),rebate))
-            else:
-                print('No data following the application of the filters')
-                discarded_filters.append(filters)
-            #print(filtered_df)
 
-    all_rebates = pd.concat(rebates, ignore_index=True)
-    print("*****Rebates******")
-    print(all_rebates)
-    print("*****Not Eligible******")
-    volumes_not_eligible = get_volumes_not_matched_to_a_rebate(all_rebates[df.columns],df)
-    print(volumes_not_eligible)
-    print("*****Discarded filters*****")
-    print(discarded_filters)
-    print("*****Given month*****")
-    print(get_rebate_summary_for_given_month(all_rebates, month))
-    print("*****summary custom*****")
-    print(get_rebate_summary_by_period(all_rebates,['clientId','period'],'volume_rebated_amount'))
-    print("*****summary custom*****")
-    print(get_rebate_summary_by_period(all_rebates,['clientId','period','product_name'],'volume_rebated_amount'))
+        if not len(rebates) == 0:
+            print(rebates)
+            all_rebates = pd.concat(rebates, ignore_index=True)
+            print("*****Rebates******")
+            print(all_rebates)
+            print("*****Not Eligible******")
+            volumes_not_eligible = get_volumes_not_matched_to_a_rebate(all_rebates[df.columns],df)
+            print(volumes_not_eligible)
+            print("*****Discarded filters*****")
+            print(discarded_filters)
+            print("*****Given month*****")
+            print(get_rebate_summary_for_given_month(all_rebates, month))
+            print("*****summary custom*****")
+            print(get_rebate_summary_by_period(all_rebates,['clientId','period'],'volume_rebated_amount'))
+            print("*****summary custom*****")
+            print(get_rebate_summary_by_period(all_rebates,['clientId','period','product_name'],'volume_rebated_amount'))
+        else:
+            print(f'No rebates applied to the volume dataset')
+    else:
+        print(f'No data found for year {year} going to month {month}')
+
 
 
 if __name__ == "__main__":
