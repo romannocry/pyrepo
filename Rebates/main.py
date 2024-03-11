@@ -2,11 +2,20 @@
 import pandas as pd
 import numpy as np
 import sys
+import warnings
+import pandas.core.common
 
 #global vars
 year = 2024
 month = 2
 
+# Suppress pandas warnings
+# Suppress SettingWithCopyWarning
+#warnings.simplefilter(action='ignore', category=pandas.core.common.SettingWithCopyWarning)
+
+
+# should there be controls in case some of the rebates are applied twice?
+# you  should not have more than one monthly rebate or yearly rebate
 rebate_CONTE =  {
   "clientId": "CONTE",
   "rebates": [
@@ -24,22 +33,10 @@ rebate_CONTE =  {
         {"exchanges": []},
         {"salesman_code": []},
         {"accounts": []},
-        {"product_name":['OSEMINI','OSEBIG']}
+        {"product_name":['OSEBIG']}
       ]
     },
-    {
-      "type": "yearly",
-      "fullRebate":False,
-      "rebate_rules": [
-          {"threshold": 1000000, "rebate_amount": .1},
-      ],
-      "filters": [
-        {"exchanges": []},
-        {"salesman_code": []},
-        {"accounts": []},
-        {"product_name":['OSEMINI']}
-      ]
-    },
+
     {
       "type": "monthly",
       "fullRebate":False,
@@ -50,7 +47,7 @@ rebate_CONTE =  {
         {"exchanges": []},
         {"salesman_code": []},
         {"accounts": []},
-        {"product_name":['OSEBIG']}
+        {"product_name":[]}
       ]
     },
     {
@@ -69,6 +66,28 @@ rebate_CONTE =  {
   ]
 }
 
+conte =  {
+  "clientId": "CONTE",
+  "rebates": [
+    {
+      "type": "yearly",
+      "fullRebate":True,
+      "rebate_rules": [
+          {"threshold": 300000, "rebate_amount": .1},
+          {"threshold": 700000, "rebate_amount": .2},
+          {"threshold": 1050000, "rebate_amount": .3},
+          {"threshold": 1400000, "rebate_amount": .5},
+          {"threshold": 1200000, "rebate_amount": .4}
+      ],
+      "filters": [
+        {"exchanges": []},
+        {"salesman_code": []},
+        {"accounts": []},
+        {"product_name":['OSEMINI']}
+      ]
+    },
+  ]
+}
 
 rebate_C1 =  {
   "clientId": "C1",
@@ -102,15 +121,15 @@ rebate_C1 =  {
   ]
 }
 
-clientRebatesList = [rebate_CONTE, rebate_C1]#, rebate_fixed]
+clientRebatesList = [conte]#, rebate_fixed]
 
 
 def apply_yearly_rebate(rebate, client, df):
+    """
+    Applies yearly rebate: only difference is the ytd_volume column that is created
+    """
     # Calculate and apply yearly rebate logic here
-    print(f'==># Calculate and apply yearly rebate logic here {rebate}')
-    # Fill all empty values with 'N/A'
-    #df = df.fillna('N/A')
-    df = df.fillna(np.nan)
+    #print(f'==># Calculate and apply yearly rebate logic here {rebate}')
 
     # Calculate the YTD volume for each combination of clientId, exchange, salesman_code, and account
     #df['ytd_volume'] = df.groupby(['clientId','exchange','account','salesman_code','product_name','year'])['volume'].transform('sum')
@@ -128,11 +147,11 @@ def apply_yearly_rebate(rebate, client, df):
 
 #Question - when it is monthly, is it applying on the fully volume when the threshold is met or on transactions above the threshold???
 def apply_monthly_rebate(rebate, client, df):
+    """
+    Applies monthly rebate
+    """
     # Calculate and apply monthly rebate logic here
-    print(f'==># Calculate and apply monthly rebate logic here: {rebate}')
-    # Fill all empty values with 'N/A'
-    #df = df.fillna('N/A')
-    df = df.fillna(np.nan)
+    #print(f'==># Calculate and apply monthly rebate logic here: {rebate}')
     # Conditionally calculate the volume eligible, rebated and the actual amount
     df[['threshold_eligibility', 'threshold_rebate', 'volume_eligible','volume_rebated', 'volume_rebated_amount']] = df.apply(lambda row: calculate_rebate(row, rebate), axis=1)
     return df
@@ -150,35 +169,56 @@ def calculate_rebate(row, rebate):
     rebate: rebate parameters
     """
     #print(f'calculating rebate : {rebate}')
-    print(rebate)
+    
+    # if yearly rebate, use ytd_volume instead of the row's volume for computation
+    row_volume = row['ytd_volume'] if rebate.get("type") == "yearly" else row['volume']
+
+    # vars
+    total_rebate = 0
+    total_volume = 0
     threshold_eligibility = 0
     threshold_rebate = 0
-    #calculating the maximum rebate by going through the rules
-    for rule in rebate.get('rebate_rules'):
-        if (row['volume']> rule.get('threshold')) and (threshold_eligibility <= rule.get('threshold')):
-            threshold_eligibility = rule.get('threshold')
-            threshold_rebate = rule.get('rebate_amount')
-    
 
-    print(f'Maximum rebate found: {threshold_rebate}')
+    #sort the rules by highest threshold    
+    sorted_rules = sorted(rebate.get('rebate_rules'), key=lambda x: x['threshold'], reverse=True)
+
     # if rebate impacts the full volume as soon as we hit the threshold
-    if rebate.get('fullRebate'):
-        volume_eligible = row['volume']
-        volume_rebated = row['volume']
+    if rebate.get('fullRebate'): 
+        # we need to find the highest rate breached (in case there are multiple layers)
+        for rule in sorted_rules:
+            if (row_volume> rule.get('threshold')):
+                threshold_rebate = rule.get('rebate_amount')
+                threshold_eligibility = rule.get('threshold')
+                break
+        # since it is a full rebate, full volume is eligible
+        volume_eligible = row_volume
+        # and therefore full volume rebated
+        volume_rebated = row_volume
+        # the amount is the total volume * the highest threshold breached
+        volume_rebated_amount = volume_rebated * threshold_rebate
     else:
-        # if rebate starts after the threshold is breached
-        volume_eligible = row['ytd_volume'] - threshold_eligibility if rebate.get("type") == "yearly" else row['volume'] - threshold_eligibility
-        volume_rebated = min(volume_eligible, row['volume'])
-    
-    # amount calculation
-    volume_rebated_amount = volume_rebated * threshold_rebate
+        # if not full rebate, it means that the rebate only applies to the portion above the threshold.
+        # in case of multiple layers of rebate, we need to calculate each portion of the volume above threshold * rebate amount
+        for rule in sorted_rules:
+            if (row_volume > rule.get('threshold')):
+                
+                total_rebate += (row_volume - rule['threshold']) * rule['rebate_amount']
+                total_volume += (row_volume- rule['threshold'])
+                row_volume = rule.get('threshold')
+            
+        threshold_eligibility = rule.get('threshold') 
+        volume_eligible = total_volume#row['ytd_volume'] - threshold_eligibility if rebate.get("type") == "yearly" else total_volume#row['volume'] - threshold_eligibility
+        volume_rebated = total_volume#min(volume_eligible, row['volume'])
+        volume_rebated_amount = total_rebate
+        threshold_rebate = volume_rebated_amount/volume_rebated
 
     return pd.Series([threshold_eligibility, threshold_rebate, volume_eligible, volume_rebated, volume_rebated_amount])
 
 
-
-
 def trigger_rebate_process(filtered_volumes: pd.DataFrame, clientId, rebate):
+    """
+    Trigger rebate process depending on the rebate type yearly or monthly
+    """
     print(f'Triggering rebate process for client : {clientId}')
     rebate_type = rebate.get('type')
     df_output = pd.DataFrame
@@ -202,15 +242,24 @@ def get_volumes(year: int, end_month_ref:int):
     return df_filtered
 
 def get_volumes_not_matched_to_a_rebate(df1:pd.DataFrame, df2:pd.DataFrame):
+    """
+    returns all the volume entries not matched to rebates
+    """
     merged_df = df2.merge(df1, how='left', indicator=True)
     return merged_df[merged_df['_merge'] == 'left_only']
 
 def get_rebate_summary_for_given_month(df: pd.DataFrame, month:int):
+    """
+    Returns the dataframe filtered on a specific month
+    """
     df = df[(df['month'] == month)]
     #df = df.groupby(['clientId','exchange','account','salesman_code','product_name','year'])['volume'].cumsum()
     return df
 
 def get_rebate_summary_by_period(df: pd.DataFrame, groupby:list, sumby: str):
+    """
+    Custom summary that calculates MoM changes
+    """
     df = df.groupby(groupby)[sumby].sum().unstack('period')
     df.columns = pd.to_datetime(df.columns)
     df = df.sort_index(axis=1,ascending=False)
@@ -231,8 +280,14 @@ reporting_functions = {
 }
 
 def main():
+    """
+    Main function: get volume data and matches it against the client rebates array
+    """
     #get volume data
     df = get_volumes(year, month)
+
+    # Fill NaN values with 'Unknown'
+    df = df.fillna('N/A')
 
     # check if volumes retrieved
     if not df.empty:
@@ -283,27 +338,27 @@ def main():
                 #print(filtered_df)
 
         if not len(rebates) == 0:
-            print(rebates)
+            #print(rebates)
             all_rebates = pd.concat(rebates, ignore_index=True)
             print("*****Rebates******")
             print(all_rebates)
             print("*****Not Eligible******")
             volumes_not_eligible = get_volumes_not_matched_to_a_rebate(all_rebates[df.columns],df)
-            print(volumes_not_eligible)
+            #print(volumes_not_eligible)
             print("*****Discarded filters*****")
-            print(discarded_filters)
+            #print(discarded_filters)
             print("*****Given month*****")
             print(get_rebate_summary_for_given_month(all_rebates, month))
             print("*****summary custom*****")
-            print(get_rebate_summary_by_period(all_rebates,['clientId','period'],'volume_rebated_amount'))
+            #print(get_rebate_summary_by_period(all_rebates,['clientId','period'],'volume_rebated_amount'))
             print("*****summary custom*****")
-            print(get_rebate_summary_by_period(all_rebates,['clientId','period','product_name'],'volume_rebated_amount'))
+            #print(get_rebate_summary_by_period(all_rebates,['clientId','period','product_name'],'volume_rebated_amount'))
         else:
             print(f'No rebates applied to the volume dataset')
     else:
         print(f'No data found for year {year} going to month {month}')
 
 
-
 if __name__ == "__main__":
     main()
+   
