@@ -16,106 +16,26 @@ month = 2
 
 # should there be controls in case some of the rebates are applied twice?
 # you  should not have more than one monthly rebate or yearly rebate
-rebate_CONTE =  {
-  "clientId": "CONTE",
-  "rebates": [
-    {
-      "type": "monthly",
-      "fullRebate":True,
-      "rebate_rules": [
-          {"threshold": 0, "rebate_amount": .1},
-          {"threshold": 700000, "rebate_amount": .2},
-          {"threshold": 1050000, "rebate_amount": .3},
-          {"threshold": 1250000, "rebate_amount": .5},
-          {"threshold": 1200000, "rebate_amount": .4}
-      ],
-      "filters": [
-        {"exchanges": []},
-        {"salesman_code": []},
-        {"accounts": []},
-        {"product_name":['OSEBIG']}
-      ]
-    },
 
-    {
-      "type": "monthly",
-      "fullRebate":False,
-      "rebate_rules": [
-          {"threshold": 700000, "rebate_amount": .8}
-      ],
-      "filters": [
-        {"exchanges": []},
-        {"salesman_code": []},
-        {"accounts": []},
-        {"product_name":[]}
-      ]
-    },
-    {
-      "type": "monthly",
-      "fullRebate":False,
-      "rebate_rules": [
-          {"threshold": 700000, "rebate_amount": .8}
-      ],
-      "filters": [
-        {"exchanges": []},
-        {"salesman_code": []},
-        {"accounts": []},
-        {"product_name":['HKFE']}
-      ]
-    },
-  ]
-}
 
 conte =  {
   "clientId": "CONTE",
   "rebates": [
     {
-      "type": "yearly",
-      "fullRebate":True,
+      "frequency": "monthly",
+      "tiered":True, #tiered = applies to volume above the treshold)
       "rebate_rules": [
-          {"threshold": 300000, "rebate_amount": .1},
-          {"threshold": 700000, "rebate_amount": .2},
-          {"threshold": 1050000, "rebate_amount": .3},
-          {"threshold": 1400000, "rebate_amount": .5},
-          {"threshold": 1200000, "rebate_amount": .4}
+          {"threshold": 1000000, "rebate_amount": .1},
+          {"threshold": 1200000, "rebate_amount": .2},
+          #{"threshold": 1050000, "rebate_amount": .3},
+          #{"threshold": 1400000, "rebate_amount": .5},
+          #{"threshold": 1200000, "rebate_amount": .4}
       ],
       "filters": [
         {"exchanges": []},
         {"salesman_code": []},
         {"accounts": []},
-        {"product_name":['OSEMINI']}
-      ]
-    },
-  ]
-}
-
-rebate_C1 =  {
-  "clientId": "C1",
-  "rebates": [
-    {
-      "type": "monthly",
-      "fullRebate":True,
-      "rebate_rules": [
-          {"threshold": 0, "rebate_amount": .1},
-      ],
-      "filters": [
-        {"exchange": ['E3']},
-        {"salesman_code": ['S1','SO']},
-        {"accountId": []},
-        {"product_name":[]}
-      ]
-    },
-    {
-      "type": "yearly",
-      "fullRebate":False,
-      "rebate_rules": [
-          {"threshold": 300000, "rebate_amount": .1},
-      ],
-      "filters": [
-        {"exchange": ['E1']},
-        {"salesman_code": ['S2']},
-        {"accountId": []},
-        {"product_name":['P1','P6']}
+        {"product_name":['OSEMINI',"HKFE"]}
       ]
     },
   ]
@@ -171,46 +91,64 @@ def calculate_rebate(row, rebate):
     #print(f'calculating rebate : {rebate}')
     
     # if yearly rebate, use ytd_volume instead of the row's volume for computation
-    row_volume = row['ytd_volume'] if rebate.get("type") == "yearly" else row['volume']
+    row_volume = row['ytd_volume'] if rebate.get("frequency") == "yearly" else row['volume']
+    row_volume_current_month = row['volume']
+    row_volume_ytd= row['ytd_volume'] if rebate.get("frequency") == "yearly" else "N/A"
 
     # vars
     total_rebate = 0
     total_volume = 0
+    total_volume_rebated = 0
     threshold_eligibility = 0
     threshold_rebate = 0
 
     #sort the rules by highest threshold    
     sorted_rules = sorted(rebate.get('rebate_rules'), key=lambda x: x['threshold'], reverse=True)
 
-    # if rebate impacts the full volume as soon as we hit the threshold
-    if rebate.get('fullRebate'): 
+    # if rebate is not tiered, we apply rebate on the full volume as soon as we hit the threshold
+    if not rebate.get('tiered'): 
         # we need to find the highest rate breached (in case there are multiple layers)
         for rule in sorted_rules:
             if (row_volume> rule.get('threshold')):
                 threshold_rebate = rule.get('rebate_amount')
                 threshold_eligibility = rule.get('threshold')
                 break
-        # since it is a full rebate, full volume is eligible
-        volume_eligible = row_volume
-        # and therefore full volume rebated
-        volume_rebated = row_volume
-        # the amount is the total volume * the highest threshold breached
-        volume_rebated_amount = volume_rebated * threshold_rebate
+
+        if threshold_eligibility > 0:    
+            # since it is a full rebate, full volume is eligible
+            volume_eligible = min(row_volume_current_month,row_volume)
+            # and therefore full volume rebated
+            volume_rebated = min(row_volume_current_month,row_volume)
+            # the amount is the total volume * the highest threshold breached
+            volume_rebated_amount = volume_rebated * threshold_rebate
+        else:
+            volume_eligible, volume_rebated, volume_rebated_amount = 0, 0, 0
     else:
         # if not full rebate, it means that the rebate only applies to the portion above the threshold.
         # in case of multiple layers of rebate, we need to calculate each portion of the volume above threshold * rebate amount
         for rule in sorted_rules:
             if (row_volume > rule.get('threshold')):
-                
-                total_rebate += (row_volume - rule['threshold']) * rule['rebate_amount']
-                total_volume += (row_volume- rule['threshold'])
+
+                volume_rebated = min(row_volume_current_month,(row_volume- rule['threshold']))
+                total_volume_rebated += volume_rebated
+                #print(f'total_volume_rebated: {total_volume_rebated}')
+                rebate = volume_rebated * rule['rebate_amount']
+                total_rebate += rebate
+                #print(f'threshold: {rule["threshold"]}')
+                #print(f'rebate amt: {rule["rebate_amount"]}')
+                #print(f'total_rebate: {total_rebate}')
+                #total_rebate += (row_volume - rule['threshold']) * rule['rebate_amount']
+                #total_volume += (row_volume- rule['threshold'])
                 row_volume = rule.get('threshold')
             
         threshold_eligibility = rule.get('threshold') 
-        volume_eligible = total_volume#row['ytd_volume'] - threshold_eligibility if rebate.get("type") == "yearly" else total_volume#row['volume'] - threshold_eligibility
-        volume_rebated = total_volume#min(volume_eligible, row['volume'])
+        volume_eligible = total_volume_rebated#total_volume#row['ytd_volume'] - threshold_eligibility if rebate.get("type") == "yearly" else total_volume#row['volume'] - threshold_eligibility
+        volume_rebated = total_volume_rebated#total_volume#min(volume_eligible, row['volume'])
         volume_rebated_amount = total_rebate
-        threshold_rebate = volume_rebated_amount/volume_rebated
+        if volume_rebated>0:
+            threshold_rebate = volume_rebated_amount/volume_rebated
+        else:
+            threshold_rebate = 0
 
     return pd.Series([threshold_eligibility, threshold_rebate, volume_eligible, volume_rebated, volume_rebated_amount])
 
@@ -220,7 +158,7 @@ def trigger_rebate_process(filtered_volumes: pd.DataFrame, clientId, rebate):
     Trigger rebate process depending on the rebate type yearly or monthly
     """
     print(f'Triggering rebate process for client : {clientId}')
-    rebate_type = rebate.get('type')
+    rebate_type = rebate.get('frequency')
     df_output = pd.DataFrame
     print(rebate_type)
     if rebate_type in rebate_functions:
@@ -298,13 +236,13 @@ def main():
         for client in clientRebatesList:
             client_filtered_df = df[(df['clientId'] == client.get('clientId'))]
             for rebate in client.get('rebates'):
-                type = rebate.get('type')
-                full_rebate = rebate.get('fullRebate')
+                type = rebate.get('frequency')
+                tiered = rebate.get('tiered')
                 rebate_rules = rebate.get('rebate_rules')
                 filters = rebate.get('filters')
                 
                 rebate_filtered_df = client_filtered_df
-                rebate_filtered_df['type'] = type
+                rebate_filtered_df['frequency'] = type
                 #print(f'{type} - {full_rebate} - {rebate_rules} - {filters}')
 
                 for filter in filters:
